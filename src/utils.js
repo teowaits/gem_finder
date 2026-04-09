@@ -1,4 +1,4 @@
-import { DOI_PREFIXES, IMPORT_TOPIC_LIMIT, IMPORT_AUTHOR_LIMIT } from './constants.js';
+import { DOI_PREFIXES } from './constants.js';
 
 // ─── Abstract reconstruction ──────────────────────────────────────────────────
 
@@ -166,11 +166,17 @@ function parseCsvLine(line) {
 // ─── CSV import ───────────────────────────────────────────────────────────────
 
 /**
- * Parses a shared-schema CSV import.
- * Expected header: type,openalex_id,display_name,notes[,orcid]
+ * Parses a CSV import with flexible column detection.
  *
- * Enforces hard limits: max 25 topics/subfields and 25 authors.
- * Throws with a user-facing message on format or limit violations.
+ * Accepted column names (case-insensitive, spaces/underscores ignored):
+ *   type         → type
+ *   openalex_id / OpenAlex ID / Open Alex ID → openalex_id
+ *   display_name / display name / Name        → display_name
+ *   notes / Notes                             → notes
+ *   orcid / ORCID                             → orcid
+ *
+ * Extra columns are ignored. All valid rows are returned — no count limit.
+ * The selection cap (25) is enforced in the UI, not here.
  *
  * @param {string} text  Raw CSV text
  * @returns {{ topics: Object[], authors: Object[], all: Object[] }}
@@ -179,10 +185,30 @@ export function parseImportCsv(text) {
   const lines = text.trim().split(/\r?\n/);
   if (lines.length < 2) throw new Error('CSV is empty or has no data rows.');
 
-  const header = lines[0].toLowerCase().replace(/\s/g, '');
-  if (!header.startsWith('type,openalex_id,display_name')) {
+  // Normalise a header string: lowercase, strip spaces and underscores
+  const norm = h => h.toLowerCase().replace(/[\s_]+/g, '');
+
+  // Map of normalised header → canonical field name
+  const HEADER_MAP = {
+    type:        'type',
+    openalexid:  'openalex_id',   // covers: openalex_id, OpenAlex ID, Open Alex ID
+    displayname: 'display_name',  // covers: display_name, display name
+    name:        'display_name',
+    notes:       'notes',
+    orcid:       'orcid',
+  };
+
+  const rawHeaders = parseCsvLine(lines[0]);
+  const colIndex   = {};   // canonical field → column index
+  rawHeaders.forEach((h, i) => {
+    const canonical = HEADER_MAP[norm(h)];
+    if (canonical && !(canonical in colIndex)) colIndex[canonical] = i;
+  });
+
+  if (!('type' in colIndex) || !('openalex_id' in colIndex)) {
     throw new Error(
-      'Invalid CSV format. Expected header: type,openalex_id,display_name,notes[,orcid]'
+      'CSV must have a "type" column and an OpenAlex ID column ' +
+      '(accepted names: "openalex_id", "OpenAlex ID", "Open Alex ID").'
     );
   }
 
@@ -192,23 +218,22 @@ export function parseImportCsv(text) {
     .map(line => {
       const cols = parseCsvLine(line);
       return {
-        type:        cols[0]?.trim().toLowerCase() ?? '',
-        openalex_id: cols[1]?.trim() ?? '',
-        display_name:cols[2]?.trim() ?? '',
-        notes:       cols[3]?.trim() ?? '',
-        orcid:       cols[4]?.trim() || null,
+        type:         cols[colIndex.type]?.trim().toLowerCase()    ?? '',
+        openalex_id:  cols[colIndex.openalex_id]?.trim()           ?? '',
+        display_name: colIndex.display_name != null
+          ? (cols[colIndex.display_name]?.trim() ?? '') : '',
+        notes:        colIndex.notes  != null
+          ? (cols[colIndex.notes]?.trim()  ?? '') : '',
+        orcid:        colIndex.orcid  != null
+          ? (cols[colIndex.orcid]?.trim()  || null) : null,
       };
     })
     .filter(item => item.type && item.openalex_id);
 
+  if (items.length === 0) throw new Error('No valid rows found in this CSV.');
+
   const topics  = items.filter(i => i.type === 'topic' || i.type === 'subfield');
   const authors = items.filter(i => i.type === 'author');
-
-  if (topics.length > IMPORT_TOPIC_LIMIT || authors.length > IMPORT_AUTHOR_LIMIT) {
-    throw new Error(
-      `Limit is ${IMPORT_TOPIC_LIMIT} topics and ${IMPORT_AUTHOR_LIMIT} authors per import — trim your list and re-import.`
-    );
-  }
 
   return { topics, authors, all: items };
 }

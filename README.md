@@ -14,7 +14,7 @@ Given a topic, an author, or a list imported from a companion tool, the app surf
 |------|-------------|
 | **Topic search** | Autocomplete against OpenAlex's full topic taxonomy (Subfield + Topic levels). Multi-select with OR / AND boolean. Pre-flight count check before fetching. |
 | **Author search** | Name search with disambiguation card, or direct ORCID lookup. Toggle between repository-only preprints and all works. |
-| **CSV import** | Accepts the shared cross-tool schema (`type, openalex_id, display_name, notes, orcid`). Batch-fetches topics and authors in a single search, deduplicates by Work ID, and tags each card with the matched criterion. |
+| **CSV import** | Accepts flexible CSV column names from companion tools. All rows are imported; up to 25 can be toggled on/off for the search. Topics searched with OR; authors offer a Repository only / All works scope toggle. |
 | **Author profiles** | On-demand per result card: institution, career citations, publication count, "publishing since" year, and recent venue history — three API calls, cached for the session. |
 | **Publication status** | Green / amber / grey indicator per card based on DOI prefix and source type. Tooltip: "Verify publication status before contacting". |
 | **CSV export** | Exports selected results as two files: a full results CSV and a shared-schema authors CSV for import into companion tools. |
@@ -59,7 +59,7 @@ No API key is required — OpenAlex is free and open. For sustained heavy usage,
 4. **Work fetching** — paginated in batches of 200 with a 60 ms inter-request delay, capped at 250 results. In author mode a client-side filter optionally restricts results to `source.type = "repository"`.
 5. **Author disambiguation** — name searches return up to 8 candidates displayed with institution, top topics, and career stats. ORCID input bypasses the card and resolves directly.
 6. **Author profile** — triggered per card on demand. Three sequential API calls fetch the career summary, earliest work date, and recent venue history; results are cached in a session Map.
-7. **CSV import** — topic and author rows are fetched in separate passes (topics with source filtering, authors without), then merged and deduplicated by OpenAlex Work ID. Each result card shows which imported criterion matched.
+7. **CSV import** — flexible column detection accepts headers from multiple companion-tool export formats (`openalex_id`, `OpenAlex ID`, `Open Alex ID`, `Name`, etc.; extra columns ignored). All rows are parsed without a hard cap; up to 25 can be selected via checkboxes (top 25 pre-ticked). Topic rows are fetched with OR (any matching topic area); author rows respect the Repository only / All works scope toggle. Passes are merged and deduplicated by OpenAlex Work ID.
 8. **Export** — selected cards are written to two CSVs: a detailed results file and a shared-schema author file compatible with journal-overlap and journal-profile-analyser.
 
 ### Practical limits
@@ -74,18 +74,32 @@ No API key is required — OpenAlex is free and open. For sustained heavy usage,
 
 ---
 
-## Shared CSV Schema
+## CSV Import Format
 
-Gem Finder uses the same import / export schema as the companion tools:
+Gem Finder accepts CSVs from companion tools with flexible column naming. A `type` column and an OpenAlex ID column are required; all other columns are optional and extras are ignored.
 
+**Topics / subfields** (exported by journal-profile-analyser):
 ```csv
-type,openalex_id,display_name,notes,orcid
-topic,T10104,Machine Learning,from journal-profiler,
-subfield,S2208,Artificial Intelligence,from journal-profiler,
-author,A5023888391,Heather Piwowar,from journal-overlap,0000-0003-1613-5981
+type,OpenAlex ID,display_name,notes
+topic,T10104,Machine Learning,from journal-profiler
+subfield,S2208,Artificial Intelligence,from journal-profiler
 ```
 
-Valid `type` values: `topic`, `subfield`, `author`. The `orcid` column is optional.
+**Authors** (exported by journal-overlap):
+```csv
+type,Name,ORCID,Open Alex ID,Notes
+author,Heather Piwowar,0000-0003-1613-5981,A5023888391,from journal-overlap
+```
+
+Mixed files containing both topics and authors are supported. Valid `type` values: `topic`, `subfield`, `author`. All rows are imported; use the checkboxes in the panel to select up to 25 for the search (top 25 pre-selected by default).
+
+### Export schema
+
+Exports use the shared cross-tool schema:
+```csv
+type,openalex_id,display_name,notes,orcid
+author,A5023888391,Heather Piwowar,gem-finder export,0000-0003-1613-5981
+```
 
 ---
 
@@ -124,6 +138,7 @@ This tool was built with the assistance of [Claude Sonnet 4.6](https://www.anthr
 
 | Version | Date | Changes |
 |---------|------|---------|
+| **1.1.0** | 2026-04-08 | **CSV import overhaul** — flexible column detection accepts headers from multiple companion-tool formats; no row limit on import; checkbox selection UI (top 25 pre-ticked, 25-item cap enforced live); OR label for topics; Repository only / All works scope toggle for authors |
 | **1.0.0** | 2026-04-08 | Initial release — topic search (OR/AND, subfield autocomplete, pre-flight check), author search (ORCID detection, disambiguation card, repository toggle), CSV import/export (shared schema), on-demand author profiles, publication status indicators, landing page with example topics |
 
 ---

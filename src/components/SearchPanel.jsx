@@ -22,7 +22,9 @@ export default function SearchPanel({
   confirmedAuthor,  setConfirmedAuthor,
   authorAllWorks,   setAuthorAllWorks,
   // import props
-  importedItems,   setImportedItems,
+  importedItems,       setImportedItems,
+  activeImportIds,     setActiveImportIds,
+  importAuthorScope,   setImportAuthorScope,
   phase,
   onSearch,
   onCancel,
@@ -35,7 +37,7 @@ export default function SearchPanel({
     if (!hasRepo) return false;
     if (searchMode === 'topic')  return selectedTopics.length > 0;
     if (searchMode === 'author') return confirmedAuthor !== null;
-    if (searchMode === 'import') return importedItems.length > 0;
+    if (searchMode === 'import') return activeImportIds.size > 0;
     return false;
   })();
 
@@ -228,6 +230,10 @@ export default function SearchPanel({
           <CsvImport
             importedItems={importedItems}
             setImportedItems={setImportedItems}
+            activeImportIds={activeImportIds}
+            setActiveImportIds={setActiveImportIds}
+            importAuthorScope={importAuthorScope}
+            setImportAuthorScope={setImportAuthorScope}
             disabled={disabled}
           />
         )}

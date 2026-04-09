@@ -27,7 +27,9 @@ export default function App() {
   const [authorAllWorks, setAuthorAllWorks]   = useState(false);
 
   // ─── Import mode (Phase 5) ───────────────────────────────────────────────
-  const [importedItems, setImportedItems] = useState([]);      // [{ type, openalex_id, display_name, notes, orcid }]
+  const [importedItems,     setImportedItems]     = useState([]);        // [{ type, openalex_id, display_name, notes, orcid }] — full list
+  const [activeImportIds,   setActiveImportIds]   = useState(new Set()); // Set<"type:openalex_id"> — selected for search (≤25)
+  const [importAuthorScope, setImportAuthorScope] = useState('all');     // 'all' | 'repository'
 
   // ─── Fetch state ──────────────────────────────────────────────────────────
   const [phase, setPhase]                   = useState('idle'); // 'idle'|'preflight'|'running'|'done'|'error'
@@ -68,10 +70,13 @@ export default function App() {
 
     // Repo selection is only required for modes that filter by source.
     // Author mode fetches from all sources; import-author-only is the same.
+    const activeImportItems = importedItems.filter(
+      item => activeImportIds.has(`${item.type}:${item.openalex_id}`)
+    );
     const needsSourceIds =
       searchMode === 'topic' ||
       (searchMode === 'import' &&
-        importedItems.some(i => i.type === 'topic' || i.type === 'subfield'));
+        activeImportItems.some(i => i.type === 'topic' || i.type === 'subfield'));
 
     if (needsSourceIds && sourceIds.length === 0) {
       setErrorMsg('Select at least one repository.');
@@ -200,8 +205,11 @@ export default function App() {
   }
 
   async function runImportSearch({ sourceIds, fromDate, signal }) {
-    const importTopics  = importedItems.filter(i => i.type === 'topic' || i.type === 'subfield');
-    const importAuthors = importedItems.filter(i => i.type === 'author');
+    const activeItems   = importedItems.filter(
+      item => activeImportIds.has(`${item.type}:${item.openalex_id}`)
+    );
+    const importTopics  = activeItems.filter(i => i.type === 'topic' || i.type === 'subfield');
+    const importAuthors = activeItems.filter(i => i.type === 'author');
 
     // workMap accumulates results: work_id → { work, criteria: Set<displayName> }
     const workMap = new Map();
@@ -224,7 +232,7 @@ export default function App() {
 
       setPhase('preflight');
       setLogLine('Checking result count…');
-      const count = await apiFetchPreflightCount({ sourceIds, topicIds, fromDate }, signal);
+      const count = await apiFetchPreflightCount({ sourceIds, topicIds, topicBooleanMode: 'OR', fromDate }, signal);
       setPreflightCount(count);
 
       if (count > 0) {
@@ -233,6 +241,7 @@ export default function App() {
         const works = await fetchWorks({
           sourceIds,
           topicIds,
+          topicBooleanMode: 'OR',
           fromDate,
           signal,
           onProgress: (fetched, total) => {
@@ -260,7 +269,7 @@ export default function App() {
 
       setPhase('running');
       setLogLine('Fetching author results…');
-      const works = await fetchWorks({
+      let authorWorks = await fetchWorks({
         authorIds,
         fromDate,
         signal,
@@ -269,6 +278,14 @@ export default function App() {
           setLogLine(`Fetching author results… ${fetched} of ${Math.min(total, RESULTS_CAP)}`);
         },
       });
+
+      if (importAuthorScope === 'repository') {
+        authorWorks = authorWorks.filter(
+          w => w.primary_location?.source?.type === 'repository'
+        );
+      }
+
+      const works = authorWorks;
 
       // Match each work to which imported authors it contains
       addWorks(works, work => {
@@ -434,6 +451,10 @@ export default function App() {
           authorAllWorks={authorAllWorks}    setAuthorAllWorks={setAuthorAllWorks}
           importedItems={importedItems}
           setImportedItems={setImportedItems}
+          activeImportIds={activeImportIds}
+          setActiveImportIds={setActiveImportIds}
+          importAuthorScope={importAuthorScope}
+          setImportAuthorScope={setImportAuthorScope}
           phase={phase}
           onSearch={handleSearch}
           onCancel={handleCancel}
